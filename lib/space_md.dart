@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:markdown/markdown.dart' as md;
 
 void main() {
   runApp(const MyApp());
@@ -22,174 +21,216 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// Custom block syntax that preserves exact whitespace between paragraphs
-class PreserveWhitespaceSyntax extends md.BlockSyntax {
-  static final _startPattern = RegExp(r'^');
+// Widget that preserves line breaks exactly as typed
+class PreservedLineBreakText extends StatelessWidget {
+  final String text;
+  final TextStyle? style;
+  final double lineHeight;
+
+  const PreservedLineBreakText({
+    Key? key,
+    required this.text,
+    this.style,
+    this.lineHeight = 20.0,
+  }) : super(key: key);
 
   @override
-  RegExp get pattern => _startPattern;
+  Widget build(BuildContext context) {
+    // Split text by line breaks
+    final lines = text.split('\n');
+    final List<Widget> lineWidgets = [];
 
-  const PreserveWhitespaceSyntax();
-
-  @override
-  bool canParse(md.BlockParser parser) {
-    // We want to process the entire document
-    return true;
-  }
-
-  @override
-  md.Node parse(md.BlockParser parser) {
-    // Get the current line and move to the next one
-    final currentLine = parser.current.content;
-    final container = md.Element('preserve-whitespace', [md.Text(currentLine)]);
-    parser.advance();
-
-    // Keep track of consecutive empty lines
+    // Track consecutive empty lines
     int emptyLineCount = 0;
 
-    // Process remaining lines in the document
-    while (!parser.isDone) {
-      final line = parser.current.content;
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
 
       if (line.trim().isEmpty) {
-        // Empty line encountered
+        // Count consecutive empty lines
         emptyLineCount++;
       } else {
-        // Non-empty line encountered
-
-        // If we had empty lines before this, add a special marker
+        // If we had empty lines, add appropriate spacing
         if (emptyLineCount > 0) {
-          final spacer = md.Element('line-spacer', []);
-          spacer.attributes['count'] = emptyLineCount.toString();
-          container.children!.add(spacer);
+          lineWidgets.add(SizedBox(height: emptyLineCount * lineHeight));
           emptyLineCount = 0;
         }
 
-        // Add the current non-empty line
-        container.children!.add(md.Text(line));
+        // Add the text line
+        lineWidgets.add(Text(
+          line,
+          style: style,
+        ));
       }
-
-      parser.advance();
     }
 
-    // If the document ends with empty lines, add a spacer for those too
+    // Handle any trailing empty lines
     if (emptyLineCount > 0) {
-      final spacer = md.Element('line-spacer', []);
-      spacer.attributes['count'] = emptyLineCount.toString();
-      container.children!.add(spacer);
-    }
-
-    return container;
-  }
-}
-
-// Custom builder for the preserve-whitespace container
-class PreserveWhitespaceBuilder extends MarkdownElementBuilder {
-  @override
-  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    List<Widget> children = [];
-
-    for (var child in element.children!) {
-      if (child is md.Element && child.tag == 'line-spacer') {
-        // Add a sized box for empty lines
-        int count = int.parse(child.attributes['count'] ?? '1');
-        children.add(SizedBox(height: count * 24.0));
-      } else if (child is md.Text) {
-        // Add a text widget for non-empty lines
-        if (child.text.isNotEmpty) {
-          children.add(Text(
-            child.text,
-            style: preferredStyle,
-          ));
-        }
-      }
+      lineWidgets.add(SizedBox(height: emptyLineCount * lineHeight));
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: children,
+      children: lineWidgets,
     );
   }
 }
 
-// Custom markdown processor that preserves whitespace
-class CustomMarkdownProcessor {
-  static String processMarkdown(String input) {
+// Simple Markdown processor that handles basic elements
+class SimpleMarkdownProcessor {
+  static List<Widget> processMarkdown(String input, TextStyle defaultStyle) {
+    List<Widget> widgets = [];
+    List<String> paragraphs = [];
+    String currentParagraph = '';
+    int emptyLineCount = 0;
+    bool inList = false;
+    List<String> listItems = [];
+
     // Split the input by lines
     final lines = input.split('\n');
 
-    // Process each line for Markdown formatting
-    List<String> processedLines = [];
-    bool inList = false;
+    for (int i = 0; i < lines.length; i++) {
+      String line = lines[i].trim();
 
-    for (var line in lines) {
-      // Special handling for headers
+      // Handle headers
       if (line.startsWith('# ')) {
-        processedLines.add('<h1>${line.substring(2)}</h1>');
-      } else if (line.startsWith('## ')) {
-        processedLines.add('<h2>${line.substring(3)}</h2>');
-      } else if (line.startsWith('### ')) {
-        processedLines.add('<h3>${line.substring(4)}</h3>');
-      }
-      // Special handling for bullet lists
-      else if (line.trim().startsWith('* ')) {
-        if (!inList) {
-          processedLines.add('<ul>');
-          inList = true;
+        if (currentParagraph.isNotEmpty) {
+          paragraphs.add(currentParagraph);
+          currentParagraph = '';
         }
-        processedLines.add('<li>${line.trim().substring(2)}</li>');
-      }
-      // Special handling for numbered lists
-      else if (RegExp(r'^\d+\.\s').hasMatch(line.trim())) {
-        if (!inList) {
-          processedLines.add('<ol>');
-          inList = true;
+        widgets.add(Text(
+          line.substring(2),
+          style: defaultStyle.copyWith(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ));
+        if (emptyLineCount > 0) {
+          widgets.add(SizedBox(height: emptyLineCount * 20.0));
+          emptyLineCount = 0;
         }
-        final content = line.trim().replaceFirst(RegExp(r'^\d+\.\s'), '');
-        processedLines.add('<li>$content</li>');
       }
-      // Empty line that might close a list
-      else if (line.trim().isEmpty && inList) {
-        if (inList) {
-          inList = false;
-          // Check next non-empty line to see if it's still a list
-          bool nextLineIsList = false;
-          for (int i = lines.indexOf(line) + 1; i < lines.length; i++) {
-            if (lines[i].trim().isEmpty) continue;
-            nextLineIsList = lines[i].trim().startsWith('* ') ||
-                RegExp(r'^\d+\.\s').hasMatch(lines[i].trim());
-            break;
+      // Handle bullet lists
+      else if (line.startsWith('* ')) {
+        if (!inList) {
+          if (currentParagraph.isNotEmpty) {
+            paragraphs.add(currentParagraph);
+            currentParagraph = '';
           }
+          inList = true;
+          listItems = [];
+        }
+        listItems.add(line.substring(2));
+      }
+      // Handle numbered lists
+      else if (RegExp(r'^\d+\.\s').hasMatch(line)) {
+        if (!inList) {
+          if (currentParagraph.isNotEmpty) {
+            paragraphs.add(currentParagraph);
+            currentParagraph = '';
+          }
+          inList = true;
+          listItems = [];
+        }
+        listItems.add(line.replaceFirst(RegExp(r'^\d+\.\s'), ''));
+      }
+      // Handle empty lines
+      else if (line.isEmpty) {
+        // Process accumulated text if any
+        if (currentParagraph.isNotEmpty) {
+          paragraphs.add(currentParagraph);
+          currentParagraph = '';
+        }
 
-          if (!nextLineIsList) {
-            processedLines.add('</ul>');
-            inList = false;
-          } else {
-            // Just add an empty line within the list
-            processedLines.add('');
-          }
-        } else {
-          processedLines.add('');
+        // If in a list, finish it
+        if (inList) {
+          widgets.add(Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: listItems
+                .map((item) => Padding(
+                      padding: EdgeInsets.only(left: 16.0),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('• ', style: defaultStyle),
+                          Expanded(child: Text(item, style: defaultStyle)),
+                        ],
+                      ),
+                    ))
+                .toList(),
+          ));
+          inList = false;
+          listItems = [];
         }
+
+        emptyLineCount++;
       }
       // Regular text
       else {
-        if (inList &&
-            !line.trim().startsWith('* ') &&
-            !RegExp(r'^\d+\.\s').hasMatch(line.trim())) {
-          processedLines.add('</ul>');
+        if (inList) {
+          // Finish the list if we've moved on to a paragraph
+          widgets.add(Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: listItems
+                .map((item) => Padding(
+                      padding: EdgeInsets.only(left: 16.0),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('• ', style: defaultStyle),
+                          Expanded(child: Text(item, style: defaultStyle)),
+                        ],
+                      ),
+                    ))
+                .toList(),
+          ));
           inList = false;
+          listItems = [];
         }
-        processedLines.add(line);
+
+        if (emptyLineCount > 0) {
+          widgets.add(SizedBox(height: emptyLineCount * 20.0));
+          emptyLineCount = 0;
+        }
+
+        if (currentParagraph.isEmpty) {
+          currentParagraph = line;
+        } else {
+          currentParagraph += ' $line';
+        }
       }
     }
 
-    // Close any open lists
-    if (inList) {
-      processedLines.add('</ul>');
+    // Handle any remaining paragraph
+    if (currentParagraph.isNotEmpty) {
+      paragraphs.add(currentParagraph);
     }
 
-    return processedLines.join('\n');
+    // Handle any remaining list
+    if (inList && listItems.isNotEmpty) {
+      widgets.add(Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: listItems
+            .map((item) => Padding(
+                  padding: EdgeInsets.only(left: 16.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('• ', style: defaultStyle),
+                      Expanded(child: Text(item, style: defaultStyle)),
+                    ],
+                  ),
+                ))
+            .toList(),
+      ));
+    }
+
+    // Add paragraphs to widgets
+    for (String paragraph in paragraphs) {
+      widgets.add(Text(paragraph, style: defaultStyle));
+    }
+
+    return widgets;
   }
 }
 
@@ -214,7 +255,7 @@ This is the first paragraph.
 
 
 
-This is the second paragraph with a single line break above it.
+This is the second paragraph with three line breaks above it.
 
 
 This paragraph has two line breaks above it.
@@ -251,12 +292,14 @@ Text after two line breaks from the list.''',
     return Scaffold(
       appBar: AppBar(
         title: const Text('Markdown Line Break Demo'),
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
       ),
       body: Column(
         children: [
           Expanded(
             flex: 1,
             child: Container(
+              margin: const EdgeInsets.all(8.0),
               padding: const EdgeInsets.all(8.0),
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey),
@@ -282,6 +325,7 @@ Text after two line breaks from the list.''',
           Expanded(
             flex: 1,
             child: Container(
+              margin: const EdgeInsets.all(8.0),
               padding: const EdgeInsets.all(8.0),
               width: double.infinity,
               decoration: BoxDecoration(
@@ -289,8 +333,8 @@ Text after two line breaks from the list.''',
                 borderRadius: BorderRadius.circular(4.0),
               ),
               child: SingleChildScrollView(
-                child: Html(
-                  data: CustomMarkdownProcessor.processMarkdown(_markdownText),
+                child: CustomMarkdownRenderer(
+                  markdownText: _markdownText,
                 ),
               ),
             ),
@@ -301,82 +345,140 @@ Text after two line breaks from the list.''',
   }
 }
 
-// Simple HTML renderer widget
-class Html extends StatelessWidget {
-  final String data;
+// Custom markdown renderer that preserves line breaks
+class CustomMarkdownRenderer extends StatelessWidget {
+  final String markdownText;
 
-  const Html({Key? key, required this.data}) : super(key: key);
+  const CustomMarkdownRenderer({
+    Key? key,
+    required this.markdownText,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    List<Widget> widgets = [];
-    List<String> lines = data.split('\n');
-
-    TextStyle defaultStyle = Theme.of(context).textTheme.bodyMedium!;
-    TextStyle h1Style = Theme.of(context).textTheme.headlineMedium!;
-    TextStyle h2Style = Theme.of(context).textTheme.headlineSmall!;
-    TextStyle h3Style = Theme.of(context).textTheme.titleLarge!;
-
-    bool inList = false;
-    List<Widget> listItems = [];
-    bool isOrderedList = false;
+    final lines = markdownText.split('\n');
+    final widgets = <Widget>[];
+    int emptyLineCount = 0;
+    String currentText = '';
+    bool isHeader = false;
+    TextStyle style = Theme.of(context).textTheme.bodyMedium!;
 
     for (int i = 0; i < lines.length; i++) {
-      String line = lines[i];
+      final line = lines[i];
 
-      // Count consecutive empty lines
-      int emptyLineCount = 0;
-      if (line.trim().isEmpty) {
-        emptyLineCount = 1;
-        int j = i + 1;
-        while (j < lines.length && lines[j].trim().isEmpty) {
-          emptyLineCount++;
-          j++;
+      // Handle headers
+      if (line.trim().startsWith('# ')) {
+        // Add any accumulated text
+        if (currentText.isNotEmpty) {
+          widgets.add(Text(currentText, style: style));
+          currentText = '';
         }
 
+        // Add spacing if needed
         if (emptyLineCount > 0) {
-          // Add spacing based on empty line count
           widgets.add(SizedBox(height: emptyLineCount * 20.0));
+          emptyLineCount = 0;
+        }
 
-          // Skip ahead
-          i += emptyLineCount - 1;
-          continue;
+        // Add header
+        widgets.add(Text(
+          line.trim().substring(2),
+          style: Theme.of(context).textTheme.headlineMedium,
+        ));
+      }
+      // Handle bullet lists
+      else if (line.trim().startsWith('* ')) {
+        // Add any accumulated text
+        if (currentText.isNotEmpty) {
+          widgets.add(Text(currentText, style: style));
+          currentText = '';
+        }
+
+        // Add spacing if needed
+        if (emptyLineCount > 0) {
+          widgets.add(SizedBox(height: emptyLineCount * 20.0));
+          emptyLineCount = 0;
+        }
+
+        // Add list item
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(left: 16.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('• ', style: style),
+              Expanded(child: Text(line.trim().substring(2), style: style)),
+            ],
+          ),
+        ));
+      }
+      // Handle numbered lists
+      else if (RegExp(r'^\d+\.\s').hasMatch(line.trim())) {
+        // Add any accumulated text
+        if (currentText.isNotEmpty) {
+          widgets.add(Text(currentText, style: style));
+          currentText = '';
+        }
+
+        // Add spacing if needed
+        if (emptyLineCount > 0) {
+          widgets.add(SizedBox(height: emptyLineCount * 20.0));
+          emptyLineCount = 0;
+        }
+
+        // Extract number and content
+        final match = RegExp(r'^(\d+)\.\s(.+)$').firstMatch(line.trim());
+        final number = match?.group(1) ?? '1';
+        final content = match?.group(2) ?? line.trim();
+
+        // Add list item
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(left: 16.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$number. ', style: style),
+              Expanded(child: Text(content, style: style)),
+            ],
+          ),
+        ));
+      }
+      // Handle empty lines
+      else if (line.trim().isEmpty) {
+        // Add any accumulated text
+        if (currentText.isNotEmpty) {
+          widgets.add(Text(currentText, style: style));
+          currentText = '';
+        }
+
+        emptyLineCount++;
+      }
+      // Handle regular text
+      else {
+        // Add spacing if needed
+        if (emptyLineCount > 0) {
+          widgets.add(SizedBox(height: emptyLineCount * 20.0));
+          emptyLineCount = 0;
+        }
+
+        // Start new paragraph
+        if (currentText.isEmpty) {
+          currentText = line;
+        } else {
+          // Continue existing paragraph
+          currentText += '\n$line';
         }
       }
+    }
 
-      // Handle HTML tags
-      if (line.startsWith('<h1>') && line.endsWith('</h1>')) {
-        String content = line.substring(4, line.length - 5);
-        widgets.add(Text(content, style: h1Style));
-      } else if (line.startsWith('<h2>') && line.endsWith('</h2>')) {
-        String content = line.substring(4, line.length - 5);
-        widgets.add(Text(content, style: h2Style));
-      } else if (line.startsWith('<h3>') && line.endsWith('</h3>')) {
-        String content = line.substring(4, line.length - 5);
-        widgets.add(Text(content, style: h3Style));
-      } else if (line == '<ul>') {
-        inList = true;
-        isOrderedList = false;
-        listItems = [];
-      } else if (line == '<ol>') {
-        inList = true;
-        isOrderedList = true;
-        listItems = [];
-      } else if (line.startsWith('<li>') && line.endsWith('</li>')) {
-        String content = line.substring(4, line.length - 5);
-        listItems.add(Text('• $content', style: defaultStyle));
-      } else if (line == '</ul>' || line == '</ol>') {
-        widgets.add(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: listItems,
-          ),
-        );
-        inList = false;
-      } else if (line.trim().isNotEmpty) {
-        // Regular text
-        widgets.add(Text(line, style: defaultStyle));
-      }
+    // Add any remaining text
+    if (currentText.isNotEmpty) {
+      widgets.add(Text(currentText, style: style));
+    }
+
+    // Add final spacing if any
+    if (emptyLineCount > 0) {
+      widgets.add(SizedBox(height: emptyLineCount * 20.0));
     }
 
     return Column(
