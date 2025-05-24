@@ -10,15 +10,15 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Date Picker Demo',
+      title: 'Date Picker Demoa',
       supportedLocales: [
         const Locale('en', 'GB'), // Use UK locale for dd/MM/yyyy
       ],
-      localizationsDelegates: [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+      // localizationsDelegates: [
+      //   GlobalMaterialLocalizations.delegate,
+      //   GlobalWidgetsLocalizations.delegate,
+      //   GlobalCupertinoLocalizations.delegate,
+      // ],
       home: DatePickerExample(),
     );
   }
@@ -51,7 +51,7 @@ class _DatePickerExampleState extends State<DatePickerExample> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Date Picker Demo')),
+      appBar: AppBar(title: Text('Date Picker Demoa')),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
